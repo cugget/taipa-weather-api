@@ -29,13 +29,29 @@ app.get('/taipa-weather', async (req, res) => {
                 return res.status(500).json({ error: 'Invalid XML structure', details: 'Expected elements not found' });
             }
 
-            // Find the station for Taipa Grande
             const weatherReports = result.ActualWeather.Custom[0].WeatherReport;
-            const taipaStation = weatherReports.find(report => 
-                report.station && report.station.stationname && report.station.stationname[0] === 'TAIPA GRANDE'
-            );
+
+            // Log all station names to debug
+            console.log('Available stations:');
+            weatherReports.forEach(report => {
+                if (report.station && report.station.stationname && report.station.stationname[0]) {
+                    console.log(`- ${report.station.stationname[0]}`);
+                } else {
+                    console.log('- Station name missing or malformed');
+                }
+            });
+
+            // Find the station for Taipa Grande (case-insensitive, trim whitespace)
+            const taipaStation = weatherReports.find(report => {
+                if (report.station && report.station.stationname && report.station.stationname[0]) {
+                    const stationName = report.station.stationname[0].trim().toUpperCase();
+                    return stationName === 'TAIPA GRANDE';
+                }
+                return false;
+            });
 
             if (!taipaStation) {
+                console.error('Taipa Grande station not found in the XML');
                 return res.status(404).json({ error: 'Taipa Grande not found' });
             }
 
