@@ -4,19 +4,17 @@ const xml2js = require('xml2js');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Add a root route (optional, to avoid "Cannot GET /" error)
 app.get('/', (req, res) => {
     res.send('Welcome to the Taipa Weather API! Use /taipa-weather to get weather data.');
 });
 
 app.get('/taipa-weather', async (req, res) => {
     try {
-        // Add User-Agent header to the request
         const response = await axios.get('https://xml.smg.gov.mo/e_actualweather.xml', {
             headers: {
                 'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)'
             },
-            timeout: 10000 // Set a 10-second timeout
+            timeout: 10000
         });
 
         xml2js.parseString(response.data, (err, result) => {
@@ -25,23 +23,44 @@ app.get('/taipa-weather', async (req, res) => {
                 return res.status(500).json({ error: 'Error parsing XML', details: err.message });
             }
 
-            const stations = result.WeatherReport.station;
-            const taipa = stations.find(
-                station => station.stationname[0] === 'TAIPA GRANDE'
+            // Check if the expected structure exists
+            if (!result.ActualWeather || !result.ActualWeather.Custom || !result.ActualWeather.Custom[0].WeatherReport) {
+                console.error('Invalid XML structure: Missing ActualWeather, Custom, or WeatherReport');
+                return res.status(500).json({ error: 'Invalid XML structure', details: 'Expected elements not found' });
+            }
+
+            // Find the station for Taipa Grande
+            const weatherReports = result.ActualWeather.Custom[0].WeatherReport;
+            const taipaStation = weatherReports.find(report => 
+                report.station && report.station.stationname && report.station.stationname[0] === 'TAIPA GRANDE'
             );
 
-            if (!taipa) return res.status(404).json({ error: 'Taipa Grande not found' });
+            if (!taipaStation) {
+                return res.status(404).json({ error: 'Taipa Grande not found' });
+            }
+
+            const station = taipaStation.station;
+
+            // Extract weather data with validation
+            if (!station.Temperature_daily_max || !station.Temperature_daily_max[0] || !station.Temperature_daily_max[0].Value) {
+                return res.status(500).json({ error: 'Invalid XML structure', details: 'Temperature_daily_max value missing' });
+            }
+            if (!station.Temperature_daily_min || !station.Temperature_daily_min[0] || !station.Temperature_daily_min[0].Value) {
+                return res.status(500).json({ error: 'Invalid XML structure', details: 'Temperature_daily_min value missing' });
+            }
+            if (!station.Humidity || !station.Humidity[0] || !station.Humidity[0].Value) {
+                return res.status(500).json({ error: 'Invalid XML structure', details: 'Humidity value missing' });
+            }
 
             const weather = {
-                minTemp: taipa.Temperature_daily_min[0].Value[0],
-                maxTemp: taipa.Temperature_daily_max[0].Value[0],
-                humidity: taipa.Humidity[0].Value[0]
+                minTemp: station.Temperature_daily_min[0].Value[0],
+                maxTemp: station.Temperature_daily_max[0].Value[0],
+                humidity: station.Humidity[0].Value[0]
             };
 
             res.json(weather);
         });
     } catch (error) {
-        // Log detailed error information
         console.error('Fetch Error:', {
             message: error.message,
             code: error.code,
