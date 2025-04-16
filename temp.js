@@ -4,11 +4,26 @@ const xml2js = require('xml2js');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Add a root route (optional, to avoid "Cannot GET /" error)
+app.get('/', (req, res) => {
+    res.send('Welcome to the Taipa Weather API! Use /taipa-weather to get weather data.');
+});
+
 app.get('/taipa-weather', async (req, res) => {
     try {
-        const response = await axios.get('https://xml.smg.gov.mo/e_actualweather.xml');
+        // Add User-Agent header to the request
+        const response = await axios.get('https://xml.smg.gov.mo/e_actualweather.xml', {
+            headers: {
+                'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)'
+            },
+            timeout: 10000 // Set a 10-second timeout
+        });
+
         xml2js.parseString(response.data, (err, result) => {
-            if (err) return res.status(500).json({ error: 'Error parsing XML' });
+            if (err) {
+                console.error('XML Parsing Error:', err);
+                return res.status(500).json({ error: 'Error parsing XML', details: err.message });
+            }
 
             const stations = result.WeatherReport.station;
             const taipa = stations.find(
@@ -26,7 +41,19 @@ app.get('/taipa-weather', async (req, res) => {
             res.json(weather);
         });
     } catch (error) {
-        res.status(500).json({ error: 'Error fetching data' });
+        // Log detailed error information
+        console.error('Fetch Error:', {
+            message: error.message,
+            code: error.code,
+            responseStatus: error.response ? error.response.status : 'N/A',
+            responseData: error.response ? error.response.data : 'N/A'
+        });
+
+        res.status(500).json({
+            error: 'Error fetching data',
+            details: error.message,
+            status: error.response ? error.response.status : 'N/A'
+        });
     }
 });
 
