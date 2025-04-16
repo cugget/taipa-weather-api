@@ -42,16 +42,25 @@ app.get('/taipa-weather', async (req, res) => {
             });
 
             // Find the station for Taipa Grande by code "TG"
-            const taipaStation = weatherReports.find(report => 
+            let selectedStation = weatherReports.find(report => 
                 report.station && report.station.$ && report.station.$.code === 'TG'
             );
 
-            if (!taipaStation) {
-                console.error('Taipa Grande station (code TG) not found in the XML');
-                return res.status(404).json({ error: 'Taipa Grande (code TG) not found' });
+            // Fallback to FORTALEZA DO MONTE (FM) if TG is not found
+            if (!selectedStation) {
+                console.log('Taipa Grande (TG) not found, falling back to FORTALEZA DO MONTE (FM)');
+                selectedStation = weatherReports.find(report => 
+                    report.station && report.station.$ && report.station.$.code === 'FM'
+                );
             }
 
-            const station = taipaStation.station;
+            if (!selectedStation) {
+                console.error('Neither Taipa Grande (TG) nor fallback station (FM) found in the XML');
+                return res.status(404).json({ error: 'Neither Taipa Grande (TG) nor fallback station (FM) found' });
+            }
+
+            const station = selectedStation.station;
+            const stationName = station.stationname[0];
 
             // Extract weather data with validation
             if (!station.Temperature_daily_max || !station.Temperature_daily_max[0] || !station.Temperature_daily_max[0].Value) {
@@ -60,14 +69,17 @@ app.get('/taipa-weather', async (req, res) => {
             if (!station.Temperature_daily_min || !station.Temperature_daily_min[0] || !station.Temperature_daily_min[0].Value) {
                 return res.status(500).json({ error: 'Invalid XML structure', details: 'Temperature_daily_min value missing' });
             }
-            if (!station.Humidity || !station.Humidity[0] || !station.Humidity[0].Value) {
-                return res.status(500).json({ error: 'Invalid XML structure', details: 'Humidity value missing' });
-            }
+
+            // Handle missing Humidity gracefully
+            const humidity = station.Humidity && station.Humidity[0] && station.Humidity[0].Value 
+                ? station.Humidity[0].Value[0] 
+                : 'N/A';
 
             const weather = {
+                station: stationName,
                 minTemp: station.Temperature_daily_min[0].Value[0],
                 maxTemp: station.Temperature_daily_max[0].Value[0],
-                humidity: station.Humidity[0].Value[0]
+                humidity: humidity
             };
 
             res.json(weather);
