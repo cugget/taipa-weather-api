@@ -67,12 +67,14 @@ app.get('/taipa-weather', async (req, res) => {
             const maxTemp = station.Temperature_daily_max?.[0]?.Value?.[0] ?? 'N/A';
             const minTemp = station.Temperature_daily_min?.[0]?.Value?.[0] ?? 'N/A';
             const humidity = station.Humidity?.[0]?.Value?.[0] ?? 'N/A';
-
+			const currentTemp = station.Temperature?.[0]?.Value?.[0] ?? 'N/A';
+			
             res.json({
                 station: stationName,
                 stationCode: stationCode,
                 minTemp: minTemp,
                 maxTemp: maxTemp,
+				Temp: currentTemp,
                 humidity: humidity
             });
         });
