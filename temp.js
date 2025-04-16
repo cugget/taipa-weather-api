@@ -31,28 +31,24 @@ app.get('/taipa-weather', async (req, res) => {
 
             const weatherReports = result.ActualWeather.Custom[0].WeatherReport;
 
-            // Log all station names to debug
+            // Log all stations with their codes to debug
             console.log('Available stations:');
             weatherReports.forEach(report => {
-                if (report.station && report.station.stationname && report.station.stationname[0]) {
-                    console.log(`- ${report.station.stationname[0]}`);
+                if (report.station && report.station.$ && report.station.$.code && report.station.stationname && report.station.stationname[0]) {
+                    console.log(`- Code: ${report.station.$.code}, Name: ${report.station.stationname[0]}`);
                 } else {
-                    console.log('- Station name missing or malformed');
+                    console.log('- Station data missing or malformed');
                 }
             });
 
-            // Find the station for Taipa Grande (case-insensitive, trim whitespace)
-            const taipaStation = weatherReports.find(report => {
-                if (report.station && report.station.stationname && report.station.stationname[0]) {
-                    const stationName = report.station.stationname[0].trim().toUpperCase();
-                    return stationName === 'TAIPA GRANDE';
-                }
-                return false;
-            });
+            // Find the station for Taipa Grande by code "TG"
+            const taipaStation = weatherReports.find(report => 
+                report.station && report.station.$ && report.station.$.code === 'TG'
+            );
 
             if (!taipaStation) {
-                console.error('Taipa Grande station not found in the XML');
-                return res.status(404).json({ error: 'Taipa Grande not found' });
+                console.error('Taipa Grande station (code TG) not found in the XML');
+                return res.status(404).json({ error: 'Taipa Grande (code TG) not found' });
             }
 
             const station = taipaStation.station;
