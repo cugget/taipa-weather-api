@@ -54,13 +54,27 @@ app.get('/taipa-weather', async (req, res) => {
                 );
             }
 
+            // If neither TG nor FM is found, use the first available station as a last resort
             if (!selectedStation) {
-                console.error('Neither Taipa Grande (TG) nor fallback station (FM) found in the XML');
-                return res.status(404).json({ error: 'Neither Taipa Grande (TG) nor fallback station (FM) found' });
+                console.log('Neither Taipa Grande (TG) nor FORTALEZA DO MONTE (FM) found, using first available station as fallback');
+                selectedStation = weatherReports.find(report => 
+                    report.station && report.station.$ && report.station.$.code && report.station.stationname && report.station.stationname[0]
+                );
+            }
+
+            if (!selectedStation) {
+                console.error('No valid stations found in the XML');
+                return res.status(404).json({ error: 'No valid stations found in the XML' });
             }
 
             const station = selectedStation.station;
             const stationName = station.stationname[0];
+            const stationCode = station.$.code;
+
+            // Log a warning if we're not using the preferred station (TG)
+            if (stationCode !== 'TG') {
+                console.warn(`Warning: Using data from station ${stationName} (Code: ${stationCode}) as Taipa Grande (TG) was not found`);
+            }
 
             // Extract weather data with validation
             if (!station.Temperature_daily_max || !station.Temperature_daily_max[0] || !station.Temperature_daily_max[0].Value) {
@@ -77,6 +91,7 @@ app.get('/taipa-weather', async (req, res) => {
 
             const weather = {
                 station: stationName,
+                stationCode: stationCode,
                 minTemp: station.Temperature_daily_min[0].Value[0],
                 maxTemp: station.Temperature_daily_max[0].Value[0],
                 humidity: humidity
