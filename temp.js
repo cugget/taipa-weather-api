@@ -23,94 +23,71 @@ app.get('/taipa-weather', async (req, res) => {
                 return res.status(500).json({ error: 'Error parsing XML', details: err.message });
             }
 
-            // Check if the expected structure exists
-            if (!result.ActualWeather || !result.ActualWeather.Custom || !result.ActualWeather.Custom[0].WeatherReport) {
-                console.error('Invalid XML structure: Missing ActualWeather, Custom, or WeatherReport');
-                return res.status(500).json({ error: 'Invalid XML structure', details: 'Expected elements not found' });
-            }
+            const weatherReports = result?.ActualWeather?.Custom?.[0]?.WeatherReport || [];
 
-            const weatherReports = result.ActualWeather.Custom[0].WeatherReport;
-
-            // Log all stations with their codes to debug
-            console.log('Available stations:');
-            weatherReports.forEach(report => {
-                if (report.station && report.station.$ && report.station.$.code && report.station.stationname && report.station.stationname[0]) {
-                    console.log(`- Code: ${report.station.$.code}, Name: ${report.station.stationname[0]}`);
-                } else {
-                    console.log('- Station data missing or malformed');
-                }
-            });
-
-            // Find the station for Taipa Grande by code "TG"
-            let selectedStation = weatherReports.find(report => 
-                report.station && report.station.$ && report.station.$.code === 'TG'
+            // Try to find TG (Taipa Grande)
+            let selectedStation = weatherReports.find(report =>
+                report.station &&
+                report.station[0] &&
+                report.station[0].$ &&
+                report.station[0].$.code === 'TG'
             );
 
-            // Fallback to FORTALEZA DO MONTE (FM) if TG is not found
+            // Fallback to FM (Fortaleza do Monte)
             if (!selectedStation) {
-                console.log('Taipa Grande (TG) not found, falling back to FORTALEZA DO MONTE (FM)');
-                selectedStation = weatherReports.find(report => 
-                    report.station && report.station.$ && report.station.$.code === 'FM'
+                console.warn('TG not found. Trying fallback FM...');
+                selectedStation = weatherReports.find(report =>
+                    report.station &&
+                    report.station[0] &&
+                    report.station[0].$ &&
+                    report.station[0].$.code === 'FM'
                 );
             }
 
-            // If neither TG nor FM is found, use the first available station as a last resort
+            // Fallback to any station
             if (!selectedStation) {
-                console.log('Neither Taipa Grande (TG) nor FORTALEZA DO MONTE (FM) found, using first available station as fallback');
-                selectedStation = weatherReports.find(report => 
-                    report.station && report.station.$ && report.station.$.code && report.station.stationname && report.station.stationname[0]
+                console.warn('TG and FM not found. Using first available station...');
+                selectedStation = weatherReports.find(report =>
+                    report.station &&
+                    report.station[0] &&
+                    report.station[0].$ &&
+                    report.station[0].stationname?.[0]
                 );
             }
 
             if (!selectedStation) {
-                console.error('No valid stations found in the XML');
+                console.error('No valid stations found.');
                 return res.status(404).json({ error: 'No valid stations found in the XML' });
             }
 
-            const station = selectedStation.station;
-            const stationName = station.stationname[0];
-            const stationCode = station.$.code;
+            const station = selectedStation.station[0];
+            const stationName = station.stationname?.[0] ?? 'Unknown Station';
+            const stationCode = station.$.code ?? 'Unknown';
 
-            // Log a warning if we're not using the preferred station (TG)
-            if (stationCode !== 'TG') {
-                console.warn(`Warning: Using data from station ${stationName} (Code: ${stationCode}) as Taipa Grande (TG) was not found`);
-            }
+            const maxTemp = station.Temperature_daily_max?.[0]?.Value?.[0] ?? 'N/A';
+            const minTemp = station.Temperature_daily_min?.[0]?.Value?.[0] ?? 'N/A';
+            const humidity = station.Humidity?.[0]?.Value?.[0] ?? 'N/A';
 
-            // Extract weather data with validation
-            if (!station.Temperature_daily_max || !station.Temperature_daily_max[0] || !station.Temperature_daily_max[0].Value) {
-                return res.status(500).json({ error: 'Invalid XML structure', details: 'Temperature_daily_max value missing' });
-            }
-            if (!station.Temperature_daily_min || !station.Temperature_daily_min[0] || !station.Temperature_daily_min[0].Value) {
-                return res.status(500).json({ error: 'Invalid XML structure', details: 'Temperature_daily_min value missing' });
-            }
-
-            // Handle missing Humidity gracefully
-            const humidity = station.Humidity && station.Humidity[0] && station.Humidity[0].Value 
-                ? station.Humidity[0].Value[0] 
-                : 'N/A';
-
-            const weather = {
+            res.json({
                 station: stationName,
                 stationCode: stationCode,
-                minTemp: station.Temperature_daily_min[0].Value[0],
-                maxTemp: station.Temperature_daily_max[0].Value[0],
+                minTemp: minTemp,
+                maxTemp: maxTemp,
                 humidity: humidity
-            };
-
-            res.json(weather);
+            });
         });
     } catch (error) {
         console.error('Fetch Error:', {
             message: error.message,
             code: error.code,
-            responseStatus: error.response ? error.response.status : 'N/A',
-            responseData: error.response ? error.response.data : 'N/A'
+            responseStatus: error.response?.status ?? 'N/A',
+            responseData: error.response?.data ?? 'N/A'
         });
 
         res.status(500).json({
             error: 'Error fetching data',
             details: error.message,
-            status: error.response ? error.response.status : 'N/A'
+            status: error.response?.status ?? 'N/A'
         });
     }
 });
