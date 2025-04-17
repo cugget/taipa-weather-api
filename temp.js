@@ -58,19 +58,24 @@ app.get('/taipa-weather', async (req, res) => {
         });
 
         // Parse forecast text (only first valid line after headers)
-        const lines = forecastRes.data.split('\n').filter(line => /^\d{4}-\d{2}-\d{2}/.test(line));
-        const todayLine = lines.length > 0 ? lines[0] : null;
+        const forecastLines = forecastRes.data
+			.split('\n')
+			.map(line => line.trim())
+			.filter(line => /^\d{4}-\d{2}-\d{2}/.test(line));
+
+		const todayLine = forecastLines[0];
+
 
         let forecastMax = 'N/A';
         let forecastMin = 'N/A';
 
         if (todayLine) {
-            const parts = todayLine.split('\t');
-            if (parts.length >= 5) {
-                forecastMax = parts[3].replace('°C', '');
-                forecastMin = parts[4].replace('°C', '');
-            }
-        }
+			parts = todayLine.split(/\t+/); // split on one or more tabs
+			if (parts.length >= 5) {
+				forecastMax = parts[3].replace(/[^\d]/g, '');
+				forecastMin = parts[4].replace(/[^\d]/g, '');
+			}
+		}
 
         // Build response
         res.json({
