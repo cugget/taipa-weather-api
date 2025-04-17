@@ -58,24 +58,33 @@ app.get('/taipa-weather', async (req, res) => {
         });
 
         // Parse forecast text (only first valid line after headers)
-        const forecastLines = forecastRes.data
-			.split('\n')
-			.map(line => line.trim())
-			.filter(line => /^\d{4}-\d{2}-\d{2}/.test(line));
+        // Step 2: Fetch proper forecast XML
+		const forecastRes = await axios.get('https://xml.smg.gov.mo/e_forecast.xml', {
+			headers: { 'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)' },
+			timeout: 10000
+		});
 
-		const todayLine = forecastLines[0];
+		let forecastMax = 'N/A';
+		let forecastMin = 'N/A';
 
+		await xml2js.parseStringPromise(forecastRes.data).then(forecastData => {
+			const forecasts = forecastData?.ActualForecast?.Custom?.[0]?.WeatherForecast || [];
 
-        let forecastMax = 'N/A';
-        let forecastMin = 'N/A';
+			const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+			const todayForecast = forecasts.find(f => f.ValidFor?.[0] === today);
 
-        if (todayLine) {
-			parts = todayLine.split(/\t+/); // split on one or more tabs
-			if (parts.length >= 5) {
-				forecastMax = parts[3].replace(/[^\d]/g, '');
-				forecastMin = parts[4].replace(/[^\d]/g, '');
+			if (todayForecast) {
+				const desc = todayForecast.WeatherDescription?.[0] || '';
+
+				// Extract "between 21 °C and 27 °C"
+				const match = desc.match(/between (\d{1,2}) ?°C and (\d{1,2}) ?°C/);
+				if (match) {
+					forecastMin = match[1];
+					forecastMax = match[2];
+				}
 			}
-		}
+		});
+
 
         // Build response
         res.json({
