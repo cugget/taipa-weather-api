@@ -5,101 +5,78 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('Welcome to the Taipa Weather API! Use /taipa-weather to get current + forecast weather data.');
+  res.send('Welcome to the Taipa Weather API! Use /taipa-weather for current and forecast data.');
 });
 
 app.get('/taipa-weather', async (req, res) => {
-    try {
-        // Step 1: Fetch current data
-        const currentRes = await axios.get('https://xml.smg.gov.mo/e_actualweather.xml', {
-            headers: { 'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)' },
-            timeout: 10000
-        });
+  try {
+    // Step 1: Fetch current weather XML
+    const currentRes = await axios.get('https://xml.smg.gov.mo/e_actualweather.xml', {
+      headers: { 'User-Agent': 'TaipaWeatherAPI/1.0' },
+      timeout: 10000
+    });
 
-        // Step 2: Fetch forecast data (text, not real XML)
-        const forecastRes = await axios.get('https://xml.smg.gov.mo/e_7daysforecast.xml', {
-            headers: { 'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)' },
-            timeout: 10000
-        });
+    // Step 2: Fetch 7-day forecast XML
+    const forecastRes = await axios.get('https://xml.smg.gov.mo/e_forecast.xml', {
+      headers: { 'User-Agent': 'TaipaWeatherAPI/1.0' },
+      timeout: 10000
+    });
 
-        // Parse actual weather XML
-        let station = null;
-        let stationName = '';
-        let stationCode = '';
-        let currentTemp = 'N/A';
-        let humidity = 'N/A';
+    // === Parse current weather ===
+    const currentData = await xml2js.parseStringPromise(currentRes.data);
+    const weatherReports = currentData?.ActualWeather?.Custom?.[0]?.WeatherReport || [];
 
-        await xml2js.parseStringPromise(currentRes.data).then((result) => {
-            const weatherReports = result?.ActualWeather?.Custom?.[0]?.WeatherReport || [];
+    let selectedStation = weatherReports.find(report =>
+      report.station?.[0]?.$?.code === 'TG'
+    ) || weatherReports.find(report =>
+      report.station?.[0]?.$?.code === 'FM'
+    );
 
-            let selectedStation = weatherReports.find(report =>
-                report.station &&
-                report.station[0] &&
-                report.station[0].$ &&
-                report.station[0].$.code === 'TG'
-            );
-
-            if (!selectedStation) {
-                selectedStation = weatherReports.find(report =>
-                    report.station &&
-                    report.station[0] &&
-                    report.station[0].$ &&
-                    report.station[0].$.code === 'FM'
-                );
-            }
-
-            if (selectedStation) {
-                station = selectedStation.station[0];
-                stationName = station.stationname?.[0] ?? 'Unknown Station';
-                stationCode = station.$.code ?? 'Unknown';
-                currentTemp = station.Temperature?.[0]?.Value?.[0] ?? 'N/A';
-                humidity = station.Humidity?.[0]?.Value?.[0] ?? 'N/A';
-            }
-        });
-
-        // Parse forecast text (only first valid line after headers)
-        // Step 2: Fetch proper forecast XML
-		const forecastRes = await axios.get('https://xml.smg.gov.mo/e_forecast.xml', {
-			headers: { 'User-Agent': 'TaipaWeatherAPI/1.0 (your-email@example.com)' },
-			timeout: 10000
-		});
-
-		let forecastMax = 'N/A';
-		let forecastMin = 'N/A';
-
-		await xml2js.parseStringPromise(forecastRes.data).then(forecastData => {
-			const forecasts = forecastData?.ActualForecast?.Custom?.[0]?.WeatherForecast || [];
-
-			const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-			const todayForecast = forecasts.find(f => f.ValidFor?.[0] === today);
-
-			if (todayForecast) {
-				const desc = todayForecast.WeatherDescription?.[0] || '';
-
-				// Extract "between 21 °C and 27 °C"
-				const match = desc.match(/between (\d{1,2}) ?°C and (\d{1,2}) ?°C/);
-				if (match) {
-					forecastMin = match[1];
-					forecastMax = match[2];
-				}
-			}
-		});
-
-
-        // Build response
-        res.json({
-            station: stationName,
-            stationCode: stationCode,
-            currentTemp,
-            humidity,
-            forecastMin,
-            forecastMax
-        });
-
-    } catch (error) {
-        console.error('Error fetching data:', error);
-        res.status(500).json({ error: 'Failed to fetch or parse weather data', details: error.message });
+    if (!selectedStation) {
+      return res.status(404).json({ error: 'No valid weather station found (TG or FM).' });
     }
+
+    const station = selectedStation.station[0];
+    const stationName = station.stationname?.[0] ?? 'Unknown';
+    const stationCode = station.$.code ?? 'Unknown';
+    const currentTemp = station.Temperature?.[0]?.Value?.[0] ?? 'N/A';
+    const humidity = station.Humidity?.[0]?.Value?.[0] ?? 'N/A';
+
+    // === Parse forecast weather ===
+    const forecastData = await xml2js.parseStringPromise(forecastRes.data);
+    const forecasts = forecastData?.ActualForecast?.Custom?.[0]?.WeatherForecast || [];
+
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todayForecast = forecasts.find(f => f.ValidFor?.[0] === today);
+
+    let forecastMin = 'N/A';
+    let forecastMax = 'N/A';
+
+    if (todayForecast) {
+      const description = todayForecast.WeatherDescription?.[0] || '';
+      const match = description.match(/between (\d{1,2}) ?°C and (\d{1,2}) ?°C/);
+      if (match) {
+        forecastMin = match[1];
+        forecastMax = match[2];
+      }
+    }
+
+    // === Final JSON Output ===
+    res.json({
+      station: stationName,
+      stationCode,
+      currentTemp,
+      humidity,
+      forecastMin,
+      forecastMax
+    });
+
+  } catch (error) {
+    console.error('Error:', error.message);
+    res.status(500).json({ error: 'Server error', details: error.message });
+  }
 });
 
-app.listen(port, () => console.log(`Server running on port ${port}`));
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
